@@ -1,19 +1,42 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PC Remote Control</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #121212; color: white; }
+        .controls { margin: 20px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
+        button { padding: 15px 25px; font-size: 16px; cursor: pointer; border-radius: 8px; border: none; background: #3498db; color: white; }
+        button:active { background: #2980b9; }
+        #pc-screen { width: 90%; max-width: 800px; border: 3px solid #333; margin-top: 20px; border-radius: 10px; }
+        .status { color: #2ecc71; margin-bottom: 10px; }
+    </style>
 </head>
 <body>
-    <h1>My PC Controller</h1>
-    <p>Status: <span id="status">Waiting...</span></p>
-    
-    <button onclick="sendCommand('volumeup')">Volume Up</button>
-    <button onclick="sendCommand('volumedown')">Volume Down</button>
-    <button onclick="sendCommand('playpause')">Play/Pause</button>
+
+    <h1>Remote PC Control</h1>
+    <div id="status" class="status">System Ready</div>
+
+    <div class="controls">
+        <button onclick="sendCommand('take_screenshot')">📸 Refresh Screen</button>
+        <button onclick="sendCommand('left_click')">🖱️ Left Click</button>
+        <button onclick="sendCommand('volumeup')">🔊 Vol Up</button>
+        <button onclick="sendCommand('volumedown')">🔉 Vol Down</button>
+    </div>
+
+    <div class="controls">
+        <button onclick="sendCommand('w')">W</button>
+        <button onclick="sendCommand('a')">A</button>
+        <button onclick="sendCommand('s')">S</button>
+        <button onclick="sendCommand('d')">D</button>
+    </div>
+
+    <img id="pc-screen" src="https://via.placeholder.com/800x450?text=Waiting+for+Screenshot..." />
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAHQaoPEVTaJ8WwkHlYDdpwA-lWxYVnOts",
@@ -22,26 +45,31 @@
             projectId: "website-computer-fe00c",
             storageBucket: "website-computer-fe00c.firebasestorage.app",
             messagingSenderId: "537270413796",
-            appId: "1:537270413796:web:52f6171561062b9e94bff1",
-            measurementId: "G-6MZ91046B3"
+            appId: "1:537270413796:web:52f6171561062b9e94bff1"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
+        // Send Command function
         window.sendCommand = function(action) {
-            document.getElementById('status').innerText = "Sending...";
             const commandRef = ref(db, 'pc_control/command');
-            
             set(commandRef, {
                 action: action,
                 timestamp: Date.now()
-            }).then(() => {
-                document.getElementById('status').innerText = "Sent: " + action;
-            }).catch((error) => {
-                document.getElementById('status').innerText = "Error: " + error.message;
             });
-        }
+            document.getElementById('status').innerText = "Sent: " + action;
+        };
+
+        // Listen for new screenshots
+        const screenRef = ref(db, 'pc_control/screenshot/image');
+        onValue(screenRef, (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                document.getElementById('pc-screen').src = "data:image/jpeg;base64," + data;
+                document.getElementById('status').innerText = "Screen Updated";
+            }
+        });
     </script>
 </body>
 </html>
