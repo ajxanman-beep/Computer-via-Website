@@ -2,31 +2,32 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>High-Speed Remote PC</title>
+    <title>Pro Remote Desktop</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #000; color: #fff; margin: 0; padding: 10px; }
-        #pc-screen { width: 100%; max-width: 900px; border: 2px solid #444; cursor: crosshair; user-select: none; }
-        .ui-bar { background: #222; padding: 10px; display: flex; justify-content: center; gap: 10px; }
-        button { padding: 10px; background: #3498db; color: white; border: none; border-radius: 4px; }
-        button.scroll { background: #e67e22; }
+        body { font-family: system-ui; text-align: center; background: #000; color: #fff; margin: 0; padding: 10px; overflow: hidden; }
+        .ui-bar { background: #1a1a1a; padding: 10px; display: flex; justify-content: center; gap: 10px; align-items: center; border-radius: 8px; }
+        #pc-screen { 
+            width: 100%; max-width: 900px; border: 1px solid #444; margin-top: 10px;
+            cursor: crosshair; user-select: none; -webkit-user-drag: none; 
+        }
+        button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+        #status { font-size: 12px; color: #00ff00; }
     </style>
 </head>
 <body>
 
     <div class="ui-bar">
-        <button onmousedown="sendCommand('scroll_up')">🔼 Scroll Up</button>
-        <button onmousedown="sendCommand('scroll_down')">🔽 Scroll Down</button>
-        <button onclick="toggleTurbo()">🚀 Turbo: <span id="turbo-status">OFF</span></button>
-        <div id="fps-counter" style="font-size: 12px; color: #aaa;">FPS: 0</div>
+        <button onmousedown="sendCmd('scroll_up')">🔼 Up</button>
+        <button onmousedown="sendCmd('scroll_down')">🔽 Down</button>
+        <button onclick="sendCmd('take_screenshot')">🔄 Refresh</button>
+        <span id="status">⚡ Live</span>
     </div>
 
-    <div class="screen-container">
-        <img id="pc-screen" 
-             onmousedown="handleMouse(event, 'mousedown')" 
-             onmouseup="handleMouse(event, 'mouseup')" 
-             oncontextmenu="event.preventDefault(); handleMouse(event, 'right_click')"
-             src="" />
-    </div>
+    <img id="pc-screen" 
+         onmousedown="handleMouse(event, 'mousedown')" 
+         onmouseup="handleMouse(event, 'mouseup')" 
+         oncontextmenu="handleMouse(event, 'right_click'); return false;"
+         src="" />
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -41,46 +42,39 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
-        let turbo = false;
-        let lastTime = Date.now();
+        const cmdRef = ref(db, 'pc_control/command');
 
-        // MOUSE LOGIC (Dragging)
+        // Handles mouse and immediately triggers a screenshot for fast feedback
         window.handleMouse = function(e, type) {
             const rect = e.target.getBoundingClientRect();
             const x = (e.clientX - rect.left) / rect.width;
             const y = (e.clientY - rect.top) / rect.height;
-            set(ref(db, 'pc_control/command'), { action: type, x: x, y: y, timestamp: Date.now() });
+            
+            set(cmdRef, { action: type, x: x, y: y, timestamp: Date.now() });
+            setTimeout(() => sendCmd('take_screenshot'), 50); 
         };
 
-        // KEYBOARD LOGIC
+        window.sendCmd = (action) => {
+            set(cmdRef, { action: action, timestamp: Date.now() });
+        };
+
+        // Keyboard Listener
         window.addEventListener('keydown', (e) => {
-            if (["ArrowUp","ArrowDown","Space"].includes(e.code)) e.preventDefault();
-            set(ref(db, 'pc_control/command'), { action: e.key.toLowerCase(), timestamp: Date.now() });
+            if (["ArrowUp","ArrowDown"," "].includes(e.key)) e.preventDefault();
+            let key = e.key.toLowerCase();
+            sendCmd(key === " " ? "space" : key);
+            setTimeout(() => sendCmd('take_screenshot'), 50);
         });
 
-        // REFRESH LOGIC
-        window.toggleTurbo = () => {
-            turbo = !turbo;
-            document.getElementById('turbo-status').innerText = turbo ? "ON" : "OFF";
-        };
-
-        setInterval(() => {
-            set(ref(db, 'pc_control/command'), { action: 'take_screenshot', timestamp: Date.now() });
-        }, 500); // 500ms is safe. If you go to 100ms, Firebase may ban your IP temporarily.
-
+        // Screenshot Listener (Decodes WebP)
         onValue(ref(db, 'pc_control/screenshot/image'), (s) => {
             const data = s.val();
-            if (data) {
-                document.getElementById('pc-screen').src = "data:image/jpeg;base64," + data;
-                const now = Date.now();
-                document.getElementById('fps-counter').innerText = "Latency: " + (now - lastTime) + "ms";
-                lastTime = now;
-            }
+            if (data) document.getElementById('pc-screen').src = "data:image/webp;base64," + data;
         });
 
-        window.sendCommand = (action) => {
-             set(ref(db, 'pc_control/command'), { action: action, timestamp: Date.now() });
-        };
+        // Loop to keep screen updated even without input
+        setInterval(() => sendCmd('take_screenshot'), 400); 
+
     </script>
 </body>
 </html>
