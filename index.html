@@ -3,38 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Remote PC Control</title>
+    <title>Remote PC Pro</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #121212; color: white; margin: 0; padding: 20px; }
+        body { font-family: sans-serif; text-align: center; background: #121212; color: white; margin: 0; padding: 20px; overflow-x: hidden; }
         .status { color: #2ecc71; margin-bottom: 10px; font-weight: bold; }
-        .screen-container { position: relative; display: inline-block; margin-top: 20px; }
-        #pc-screen { 
-            width: 100%; max-width: 800px; 
-            border: 3px solid #333; border-radius: 10px; 
-            cursor: crosshair; /* Shows a target cursor */
-        }
-        .controls { margin-top: 20px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
-        button { padding: 12px 20px; font-size: 14px; cursor: pointer; border-radius: 5px; border: none; background: #3498db; color: white; }
-        button:hover { background: #2980b9; }
+        .screen-container { position: relative; display: inline-block; margin-top: 10px; }
+        #pc-screen { width: 100%; max-width: 900px; border: 3px solid #333; border-radius: 10px; cursor: crosshair; }
+        .controls { margin-top: 15px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; align-items: center; }
+        select, button { padding: 12px; font-size: 14px; border-radius: 5px; border: none; }
+        button { background: #3498db; color: white; cursor: pointer; }
+        select { background: #444; color: white; }
+        .kb-info { font-size: 12px; color: #888; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <h1>Remote PC Control</h1>
+    <h1>Remote PC Pro</h1>
     <div id="status" class="status">Connecting...</div>
 
-    <div class="screen-container">
-        <img id="pc-screen" onclick="handleScreenClick(event)" src="https://via.placeholder.com/800x450?text=Connecting+to+PC..." />
+    <div class="controls">
+        <label>Mouse Mode: </label>
+        <select id="mouse-mode">
+            <option value="left_click">Left Click</option>
+            <option value="right_click">Right Click</option>
+            <option value="double_click">Double Click</option>
+        </select>
+        <button onclick="sendCommand('take_screenshot')">📸 Manual Refresh</button>
     </div>
 
-    <div class="controls">
-        <button onclick="sendCommand('volumeup')">🔊 Vol Up</button>
-        <button onclick="sendCommand('volumedown')">🔉 Vol Down</button>
-        <button onclick="sendCommand('w')">W</button>
-        <button onclick="sendCommand('a')">A</button>
-        <button onclick="sendCommand('s')">S</button>
-        <button onclick="sendCommand('d')">D</button>
+    <div class="screen-container">
+        <img id="pc-screen" onclick="handleScreenClick(event)" src="https://via.placeholder.com/800x450?text=Waiting+for+PC..." />
     </div>
+
+    <div class="kb-info">⌨️ Any key you press on your keyboard will be sent to the PC automatically.</div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -53,48 +54,48 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
 
-        // 1. CLICK HANDLER: Sends X/Y percentages to PC
+        // 1. GLOBAL KEYBOARD LISTENER
+        window.addEventListener('keydown', (e) => {
+            // Prevent keys like 'Space' or 'Arrows' from scrolling the webpage
+            if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code)) {
+                e.preventDefault();
+            }
+            
+            // Send the key name (e.g., 'a', 'Enter', 'Backspace')
+            sendCommand(e.key.toLowerCase());
+        });
+
+        // 2. CLICK HANDLER (With Modes)
         window.handleScreenClick = function(event) {
             const img = document.getElementById('pc-screen');
             const rect = img.getBoundingClientRect();
+            const mode = document.getElementById('mouse-mode').value;
             
             const xPercent = (event.clientX - rect.left) / rect.width;
             const yPercent = (event.clientY - rect.top) / rect.height;
 
             const commandRef = ref(db, 'pc_control/command');
             set(commandRef, {
-                action: 'mouse_click',
+                action: mode,
                 x: xPercent,
                 y: yPercent,
                 timestamp: Date.now()
             });
-            document.getElementById('status').innerText = "Clicking...";
         };
 
-        // 2. GENERAL COMMANDS
         window.sendCommand = function(action) {
             const commandRef = ref(db, 'pc_control/command');
-            set(commandRef, {
-                action: action,
-                timestamp: Date.now()
-            });
+            set(commandRef, { action: action, timestamp: Date.now() });
         };
 
-        // 3. LISTEN FOR SCREENSHOTS
         const screenRef = ref(db, 'pc_control/screenshot/image');
         onValue(screenRef, (snapshot) => {
             const data = snapshot.val();
-            if (data) {
-                document.getElementById('pc-screen').src = "data:image/jpeg;base64," + data;
-                document.getElementById('status').innerText = "Live";
-            }
+            if (data) document.getElementById('pc-screen').src = "data:image/jpeg;base64," + data;
+            document.getElementById('status').innerText = "Live";
         });
 
-        // 4. AUTO-REFRESH (Every 3 seconds)
-        setInterval(() => {
-            sendCommand('take_screenshot');
-        }, 500);
-
+        setInterval(() => { sendCommand('take_screenshot'); }, 500);
     </script>
 </body>
 </html>
