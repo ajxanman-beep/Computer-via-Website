@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PC Remote Control</title>
+</head>
+<body>
+    <h1>My PC Controller</h1>
+    <p>Status: <span id="status">Waiting...</span></p>
+    
+    <button onclick="sendCommand('volumeup')">Volume Up</button>
+    <button onclick="sendCommand('volumedown')">Volume Down</button>
+    <button onclick="sendCommand('playpause')">Play/Pause</button>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAHQaoPEVTaJ8WwkHlYDdpwA-lWxYVnOts",
+            authDomain: "website-computer-fe00c.firebaseapp.com",
+            databaseURL: "https://website-computer-fe00c-default-rtdb.firebaseio.com",
+            projectId: "website-computer-fe00c",
+            storageBucket: "website-computer-fe00c.firebasestorage.app",
+            messagingSenderId: "537270413796",
+            appId: "1:537270413796:web:52f6171561062b9e94bff1",
+            measurementId: "G-6MZ91046B3"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        window.sendCommand = function(action) {
+            document.getElementById('status').innerText = "Sending...";
+            const commandRef = ref(db, 'pc_control/command');
+            
+            set(commandRef, {
+                action: action,
+                timestamp: Date.now()
+            }).then(() => {
+                document.getElementById('status').innerText = "Sent: " + action;
+            }).catch((error) => {
+                document.getElementById('status').innerText = "Error: " + error.message;
+            });
+        }
+    </script>
+</body>
+</html>
