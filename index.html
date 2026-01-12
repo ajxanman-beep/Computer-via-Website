@@ -1,26 +1,20 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Pro Remote Desktop</title>
+    <title>Remote PC Pro</title>
     <style>
-        body { font-family: system-ui; text-align: center; background: #000; color: #fff; margin: 0; padding: 10px; overflow: hidden; }
-        .ui-bar { background: #1a1a1a; padding: 10px; display: flex; justify-content: center; gap: 10px; align-items: center; border-radius: 8px; }
-        #pc-screen { 
-            width: 100%; max-width: 900px; border: 1px solid #444; margin-top: 10px;
-            cursor: crosshair; user-select: none; -webkit-user-drag: none; 
-        }
-        button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
-        #status { font-size: 12px; color: #00ff00; }
+        body { font-family: sans-serif; background: #000; color: white; text-align: center; margin: 0; overflow: hidden; }
+        .bar { background: #222; padding: 10px; display: flex; justify-content: center; gap: 15px; }
+        #pc-screen { width: 95vw; max-width: 1100px; border: 2px solid #444; margin-top: 10px; cursor: crosshair; user-select: none; -webkit-user-drag: none; }
+        .hint { font-size: 11px; color: #777; margin-top: 5px; }
     </style>
 </head>
 <body>
 
-    <div class="ui-bar">
-        <button onmousedown="sendCmd('scroll_up')">🔼 Up</button>
-        <button onmousedown="sendCmd('scroll_down')">🔽 Down</button>
-        <button onclick="sendCmd('take_screenshot')">🔄 Refresh</button>
-        <span id="status">⚡ Live</span>
+    <div class="bar">
+        <span>📶 Status: <b id="stat">Connecting...</b></span>
+        <button onmousedown="sendSimple('scroll_up')">🔼 Scroll Up</button>
+        <button onmousedown="sendSimple('scroll_down')">🔽 Scroll Down</button>
     </div>
 
     <img id="pc-screen" 
@@ -28,6 +22,8 @@
          onmouseup="handleMouse(event, 'mouseup')" 
          oncontextmenu="handleMouse(event, 'right_click'); return false;"
          src="" />
+
+    <div class="hint">⌨️ Hold keys to walk/type | 🖱️ Drag to move items | 🖱️ Right-click enabled</div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -44,37 +40,43 @@
         const db = getDatabase(app);
         const cmdRef = ref(db, 'pc_control/command');
 
-        // Handles mouse and immediately triggers a screenshot for fast feedback
+        // MOUSE: DRAGGING & CLICKS
         window.handleMouse = function(e, type) {
             const rect = e.target.getBoundingClientRect();
             const x = (e.clientX - rect.left) / rect.width;
             const y = (e.clientY - rect.top) / rect.height;
-            
             set(cmdRef, { action: type, x: x, y: y, timestamp: Date.now() });
-            setTimeout(() => sendCmd('take_screenshot'), 50); 
         };
 
-        window.sendCmd = (action) => {
-            set(cmdRef, { action: action, timestamp: Date.now() });
-        };
+        window.sendSimple = (act) => set(cmdRef, { action: act, timestamp: Date.now() });
 
-        // Keyboard Listener
+        // KEYBOARD: HOLDING SUPPORT
+        const pressedKeys = new Set();
+
         window.addEventListener('keydown', (e) => {
-            if (["ArrowUp","ArrowDown"," "].includes(e.key)) e.preventDefault();
-            let key = e.key.toLowerCase();
-            sendCmd(key === " " ? "space" : key);
-            setTimeout(() => sendCmd('take_screenshot'), 50);
+            if (pressedKeys.has(e.code)) return; // Prevent repeat fire
+            pressedKeys.add(e.code);
+            
+            let k = e.key.toLowerCase();
+            if (k === " ") k = "space";
+            set(cmdRef, { action: 'keydown', key: k, timestamp: Date.now() });
         });
 
-        // Screenshot Listener (Decodes WebP)
-        onValue(ref(db, 'pc_control/screenshot/image'), (s) => {
+        window.addEventListener('keyup', (e) => {
+            pressedKeys.delete(e.code);
+            let k = e.key.toLowerCase();
+            if (k === " ") k = "space";
+            set(cmdRef, { action: 'keyup', key: k, timestamp: Date.now() });
+        });
+
+        // STREAMING
+        onValue(ref(db, 'pc_control/stream'), (s) => {
             const data = s.val();
-            if (data) document.getElementById('pc-screen').src = "data:image/webp;base64," + data;
+            if (data) {
+                document.getElementById('pc-screen').src = "data:image/webp;base64," + data;
+                document.getElementById('stat').innerText = "LIVE";
+            }
         });
-
-        // Loop to keep screen updated even without input
-        setInterval(() => sendCmd('take_screenshot'), 400); 
-
     </script>
 </body>
 </html>
