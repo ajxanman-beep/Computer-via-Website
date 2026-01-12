@@ -2,40 +2,31 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Remote PC Pro</title>
+    <title>High-Speed Remote PC</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #121212; color: white; margin: 0; padding: 20px; overflow-x: hidden; }
-        .status { color: #2ecc71; margin-bottom: 10px; font-weight: bold; }
-        .screen-container { position: relative; display: inline-block; margin-top: 10px; }
-        #pc-screen { width: 100%; max-width: 900px; border: 3px solid #333; border-radius: 10px; cursor: crosshair; }
-        .controls { margin-top: 15px; display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; align-items: center; }
-        select, button { padding: 12px; font-size: 14px; border-radius: 5px; border: none; }
-        button { background: #3498db; color: white; cursor: pointer; }
-        select { background: #444; color: white; }
-        .kb-info { font-size: 12px; color: #888; margin-top: 10px; }
+        body { font-family: sans-serif; text-align: center; background: #000; color: #fff; margin: 0; padding: 10px; }
+        #pc-screen { width: 100%; max-width: 900px; border: 2px solid #444; cursor: crosshair; user-select: none; }
+        .ui-bar { background: #222; padding: 10px; display: flex; justify-content: center; gap: 10px; }
+        button { padding: 10px; background: #3498db; color: white; border: none; border-radius: 4px; }
+        button.scroll { background: #e67e22; }
     </style>
 </head>
 <body>
 
-    <h1>Remote PC Pro</h1>
-    <div id="status" class="status">Connecting...</div>
-
-    <div class="controls">
-        <label>Mouse Mode: </label>
-        <select id="mouse-mode">
-            <option value="left_click">Left Click</option>
-            <option value="right_click">Right Click</option>
-            <option value="double_click">Double Click</option>
-        </select>
-        <button onclick="sendCommand('take_screenshot')">📸 Manual Refresh</button>
+    <div class="ui-bar">
+        <button onmousedown="sendCommand('scroll_up')">🔼 Scroll Up</button>
+        <button onmousedown="sendCommand('scroll_down')">🔽 Scroll Down</button>
+        <button onclick="toggleTurbo()">🚀 Turbo: <span id="turbo-status">OFF</span></button>
+        <div id="fps-counter" style="font-size: 12px; color: #aaa;">FPS: 0</div>
     </div>
 
     <div class="screen-container">
-        <img id="pc-screen" onclick="handleScreenClick(event)" src="https://via.placeholder.com/800x450?text=Waiting+for+PC..." />
+        <img id="pc-screen" 
+             onmousedown="handleMouse(event, 'mousedown')" 
+             onmouseup="handleMouse(event, 'mouseup')" 
+             oncontextmenu="event.preventDefault(); handleMouse(event, 'right_click')"
+             src="" />
     </div>
-
-    <div class="kb-info">⌨️ Any key you press on your keyboard will be sent to the PC automatically.</div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -45,57 +36,51 @@
             apiKey: "AIzaSyAHQaoPEVTaJ8WwkHlYDdpwA-lWxYVnOts",
             authDomain: "website-computer-fe00c.firebaseapp.com",
             databaseURL: "https://website-computer-fe00c-default-rtdb.firebaseio.com",
-            projectId: "website-computer-fe00c",
-            storageBucket: "website-computer-fe00c.firebasestorage.app",
-            messagingSenderId: "537270413796",
-            appId: "1:537270413796:web:52f6171561062b9e94bff1"
+            projectId: "website-computer-fe00c"
         };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+        let turbo = false;
+        let lastTime = Date.now();
 
-        // 1. GLOBAL KEYBOARD LISTENER
+        // MOUSE LOGIC (Dragging)
+        window.handleMouse = function(e, type) {
+            const rect = e.target.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width;
+            const y = (e.clientY - rect.top) / rect.height;
+            set(ref(db, 'pc_control/command'), { action: type, x: x, y: y, timestamp: Date.now() });
+        };
+
+        // KEYBOARD LOGIC
         window.addEventListener('keydown', (e) => {
-            // Prevent keys like 'Space' or 'Arrows' from scrolling the webpage
-            if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].includes(e.code)) {
-                e.preventDefault();
+            if (["ArrowUp","ArrowDown","Space"].includes(e.code)) e.preventDefault();
+            set(ref(db, 'pc_control/command'), { action: e.key.toLowerCase(), timestamp: Date.now() });
+        });
+
+        // REFRESH LOGIC
+        window.toggleTurbo = () => {
+            turbo = !turbo;
+            document.getElementById('turbo-status').innerText = turbo ? "ON" : "OFF";
+        };
+
+        setInterval(() => {
+            set(ref(db, 'pc_control/command'), { action: 'take_screenshot', timestamp: Date.now() });
+        }, 500); // 500ms is safe. If you go to 100ms, Firebase may ban your IP temporarily.
+
+        onValue(ref(db, 'pc_control/screenshot/image'), (s) => {
+            const data = s.val();
+            if (data) {
+                document.getElementById('pc-screen').src = "data:image/jpeg;base64," + data;
+                const now = Date.now();
+                document.getElementById('fps-counter').innerText = "Latency: " + (now - lastTime) + "ms";
+                lastTime = now;
             }
-            
-            // Send the key name (e.g., 'a', 'Enter', 'Backspace')
-            sendCommand(e.key.toLowerCase());
         });
 
-        // 2. CLICK HANDLER (With Modes)
-        window.handleScreenClick = function(event) {
-            const img = document.getElementById('pc-screen');
-            const rect = img.getBoundingClientRect();
-            const mode = document.getElementById('mouse-mode').value;
-            
-            const xPercent = (event.clientX - rect.left) / rect.width;
-            const yPercent = (event.clientY - rect.top) / rect.height;
-
-            const commandRef = ref(db, 'pc_control/command');
-            set(commandRef, {
-                action: mode,
-                x: xPercent,
-                y: yPercent,
-                timestamp: Date.now()
-            });
+        window.sendCommand = (action) => {
+             set(ref(db, 'pc_control/command'), { action: action, timestamp: Date.now() });
         };
-
-        window.sendCommand = function(action) {
-            const commandRef = ref(db, 'pc_control/command');
-            set(commandRef, { action: action, timestamp: Date.now() });
-        };
-
-        const screenRef = ref(db, 'pc_control/screenshot/image');
-        onValue(screenRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data) document.getElementById('pc-screen').src = "data:image/jpeg;base64," + data;
-            document.getElementById('status').innerText = "Live";
-        });
-
-        setInterval(() => { sendCommand('take_screenshot'); }, 100);
     </script>
 </body>
 </html>
