@@ -1,29 +1,119 @@
-<script type="module">
-    // ... (Keep your Firebase Init) ...
-
-    const screenImg = document.getElementById('pc-screen');
-    const stat = document.getElementById('stat');
-    let frameCount = 0;
-    let startTime = Date.now();
-
-    // LISTEN FOR THE STREAM
-    // 'ref' and 'onValue' should be imported from the firebase database module
-    onValue(ref(db, 'pc_control/stream'), (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            // High-speed update
-            screenImg.src = "data:image/webp;base64," + data;
-            
-            // FPS Counter to track speed
-            frameCount++;
-            const elapsed = (Date.now() - startTime) / 1000;
-            if (elapsed > 1) {
-                stat.innerText = "FPS: " + Math.round(frameCount / elapsed);
-                frameCount = 0;
-                startTime = Date.now();
-            }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turbo Remote Desktop</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #000; color: #fff; margin: 0; padding: 10px; overflow: hidden; display: flex; flex-direction: column; align-items: center; }
+        .ui-bar { background: #1a1a1a; padding: 8px 20px; display: flex; justify-content: center; gap: 15px; align-items: center; border-radius: 10px; border: 1px solid #333; width: 90%; max-width: 1000px; }
+        #pc-screen { 
+            width: 100%; max-width: 1100px; border: 2px solid #444; margin-top: 10px;
+            cursor: crosshair; user-select: none; -webkit-user-drag: none; 
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
         }
-    }, { onlyOnce: false }); // Ensure it stays listening
+        button { padding: 8px 15px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 13px; font-weight: bold; transition: 0.2s; }
+        button:hover { background: #0056b3; }
+        button.scroll { background: #fd7e14; }
+        #status { font-family: monospace; color: #00ff00; font-size: 14px; min-width: 80px; }
+        .hint { font-size: 11px; color: #666; margin-top: 8px; }
+    </style>
+</head>
+<body>
 
-    // ... (Keep Mouse/Key Listeners) ...
-</script>
+    <div class="ui-bar">
+        <span id="status">FPS: 0</span>
+        <button onmousedown="sendCmd('scroll_up')">🔼 Scroll Up</button>
+        <button onmousedown="sendCmd('scroll_down')">🔽 Scroll Down</button>
+        <button onclick="sendCmd('take_screenshot')" style="background: #28a745;">🔄 Refresh</button>
+    </div>
+
+    <img id="pc-screen" 
+         onmousedown="handleMouse(event, 'mousedown')" 
+         onmouseup="handleMouse(event, 'mouseup')" 
+         oncontextmenu="handleMouse(event, 'right_click'); return false;"
+         src="https://via.placeholder.com/640x360?text=Connecting+to+Agent..." />
+
+    <div class="hint">
+        <b>Mouse:</b> Click & Hold to drag | Right-click supported <br>
+        <b>Keyboard:</b> Full keys & holding supported
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+        // CONFIG
+        const firebaseConfig = {
+            apiKey: "AIzaSyAHQaoPEVTaJ8WwkHlYDdpwA-lWxYVnOts",
+            authDomain: "website-computer-fe00c.firebaseapp.com",
+            databaseURL: "https://website-computer-fe00c-default-rtdb.firebaseio.com",
+            projectId: "website-computer-fe00c",
+            storageBucket: "website-computer-fe00c.firebasestorage.app",
+            messagingSenderId: "537270413796",
+            appId: "1:537270413796:web:52f6171561062b9e94bff1"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const cmdRef = ref(db, 'pc_control/command');
+        const screenImg = document.getElementById('pc-screen');
+        const statBox = document.getElementById('status');
+
+        // --- FPS CALCULATION ---
+        let frames = 0;
+        let lastTime = performance.now();
+
+        // --- MOUSE & DRAG LOGIC ---
+        window.handleMouse = function(e, type) {
+            const rect = screenImg.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width;
+            const y = (e.clientY - rect.top) / rect.height;
+            
+            set(cmdRef, { action: type, x: x, y: y, timestamp: Date.now() });
+        };
+
+        window.sendCmd = (action) => {
+            set(cmdRef, { action: action, timestamp: Date.now() });
+        };
+
+        // --- KEYBOARD HOLDING LOGIC ---
+        const activeKeys = new Set();
+        window.addEventListener('keydown', (e) => {
+            if (activeKeys.has(e.code)) return; 
+            activeKeys.add(e.code);
+            
+            if (["ArrowUp","ArrowDown","Space"," "].includes(e.key)) e.preventDefault();
+            let k = e.key.toLowerCase();
+            if (k === " ") k = "space";
+            set(cmdRef, { action: 'keydown', key: k, timestamp: Date.now() });
+        });
+
+        window.addEventListener('keyup', (e) => {
+            activeKeys.delete(e.code);
+            let k = e.key.toLowerCase();
+            if (k === " ") k = "space";
+            set(cmdRef, { action: 'keyup', key: k, timestamp: Date.now() });
+        });
+
+        // --- THE LIVE STREAM ---
+        onValue(ref(db, 'pc_control/stream'), (snapshot) => {
+            const data = snapshot.val();
+            if (data) {
+                // Update Image
+                screenImg.src = "data:image/webp;base64," + data;
+                
+                // Update FPS
+                frames++;
+                const now = performance.now();
+                if (now - lastTime >= 1000) {
+                    statBox.innerText = `FPS: ${frames}`;
+                    frames = 0;
+                    lastTime = now;
+                }
+            }
+        });
+
+    </script>
+</body>
+</html>
